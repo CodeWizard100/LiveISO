@@ -102,16 +102,16 @@ EOF
 
 # Generate the ISO image
 IMAGE_NAME="CUSTOM ${release} $(date -u +%Y%m%d) - ${arch}"
-ISOFILE=CUSTOM-${release}-$(date -u +%Y%m%d)-${arch}.iso
+ISOFILE=~/CUSTOM-${release}-$(date -u +%Y%m%d)-${arch}.iso
 
 sudo genisoimage -r -V "$IMAGE_NAME" -cache-inodes -J -l \
   -b isolinux/isolinux.bin -c isolinux/boot.cat \
   -no-emul-boot -boot-load-size 4 -boot-info-table \
-  -o ../$ISOFILE image/ || { echo "Failed to generate ISO"; exit 1; }
+  -o "$ISOFILE" image/ || { echo "Failed to generate ISO"; exit 1; }
 
 # Generate the md5sum.txt file
 sudo find image/ -type f -print0 | sudo xargs -0 md5sum | grep -v "\./md5sum.txt" | sudo tee image/md5sum.txt
 
 # Output ISO file location and size
-echo "ISO file created: ../$ISOFILE"
-ls -lh ../$ISOFILE
+echo "ISO file created: $ISOFILE"
+ls -lh "$ISOFILE"
