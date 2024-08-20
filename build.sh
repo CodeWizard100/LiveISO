@@ -16,11 +16,11 @@ release=${4:-xenial}
 # Language for GNOME
 gnomelanguage=${3:-'{en}'}
 
-# Installing the tools that need to be installed
+# Install the required tools
 sudo apt-get update
 sudo apt-get install -y debootstrap squashfs-tools xorriso syslinux isolinux genisoimage
 
-# Creating necessary directories
+# Create necessary directories
 mkdir -p image/isolinux
 mkdir -p chroot
 
@@ -30,91 +30,65 @@ sudo debootstrap --arch=${arch} ${release} chroot ${mirror}
 # Copying the sources.list in chroot
 sudo cp -v sources.${release}.list chroot/etc/apt/sources.list
 
-# Mounting needed pseudo-filesystems for the chroot
+# Mounting necessary pseudo-filesystems for the chroot
 sudo mount --rbind /sys chroot/sys
 sudo mount --rbind /dev chroot/dev
 sudo mount -t proc none chroot/proc
 
 # Working inside the chroot
 sudo chroot chroot <<EOF
-# Set up environment
-export CASPER_GENERATE_UUID=1
-export HOME=/root
-export TTY=unknown
-export TERM=vt100
-export LANG=C
 export DEBIAN_FRONTEND=noninteractive
-export LIVE_BOOT_SCRIPTS="casper lupin-casper"
-
-# This solves the setting up of locale problem for chroot
 locale-gen en_US.UTF-8
 
-# To allow a few apps using upstart to install correctly
+# Handle initctl override
 dpkg-divert --local --rename --add /sbin/initctl
 ln -s /bin/true /sbin/initctl
 
-# Installing wget and other necessary packages
-apt-get -qq install wget apt-transport-https
-
-# Add key for third-party repo
-apt-key update
-apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E1098513
-apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1EBD81D9
-apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 91E7EE5E
-
-# Update in-chroot package database
+# Install core and base packages
 apt-get -qq update
-apt-get -qq -y upgrade
+apt-get -qq -y install ubuntu-standard casper lupin-casper laptop-detect os-prober linux-generic
+apt-get -qq -y install xorg xinit sddm lxqt-core lxqt-qtplugin lxqt-notificationd
 
-# Install core packages
-apt-get -qq -y --purge install ubuntu-standard casper lupin-casper \
-  laptop-detect os-prober linux-generic
-
-# Install base packages
-apt-get -qq -y install xorg xinit sddm
-# Install LXQt components
-apt-get -qq -y install lxqt-core lxqt-qtplugin lxqt-notificationd
-apt-get -f -qq install
-
-# Clean up the chroot environment
+# Clean up
 apt-get -qq clean
 rm -rf /tmp/*
 
-# Reverting earlier initctl override
+# Reverting initctl override
 rm /sbin/initctl
 dpkg-divert --rename --remove /sbin/initctl
 exit
 EOF
 
-# Unmount pseudo-filesystems for the chroot
+# Unmount pseudo-filesystems
 sudo umount -lfr chroot/proc
 sudo umount -lfr chroot/sys
 sudo umount -lfr chroot/dev
 
-# Preparing image directory
-tar xf image-amd64.tar.lzma
+# Copy the kernel and initrd from the chroot
+sudo cp --verbose chroot/boot/vmlinuz-* image/casper/vmlinuz || { echo "Failed to copy vmlinuz"; exit 1; }
+sudo cp --verbose chroot/boot/initrd.img-* image/casper/initrd.lz || { echo "Failed to copy initrd.img"; exit 1; }
 
-# Copying the kernel and initrd from the chroot
-sudo cp --verbose -rf chroot/boot/vmlinuz-* image/casper/vmlinuz
-sudo cp --verbose -rf chroot/boot/initrd.img-* image/casper/initrd.lz
-
-# Creating file-system manifests
+# Creating the filesystem manifest
 sudo chroot chroot dpkg-query -W --showformat='${Package} ${Version}\n' | sudo tee image/casper/filesystem.manifest
 sudo cp -v image/casper/filesystem.manifest image/casper/filesystem.manifest-desktop
+
+# Remove unnecessary packages from the desktop manifest
 REMOVE='ubiquity ubiquity-frontend-gtk ubiquity-frontend-kde casper lupin-casper live-initramfs user-setup discover1 xresprobe os-prober libdebian-installer4'
-for i in $REMOVE
-do
+for i in $REMOVE; do
     sudo sed -i "/${i}/d" image/casper/filesystem.manifest-desktop
 done
 
-# Squashing the live filesystem (Compressing the chroot)
+# Compress the live filesystem
 sudo mksquashfs chroot image/casper/filesystem.squashfs -noappend -no-progress
 
-# Copying isolinux.bin and necessary files
-sudo cp /usr/lib/ISOLINUX/isolinux.bin image/isolinux/
-sudo cp /usr/lib/syslinux/modules/bios/* image/isolinux/
+# Copy ISOLINUX bootloader files
+sudo cp /usr/lib/ISOLINUX/isolinux.bin image/isolinux/ || { echo "Failed to copy isolinux.bin"; exit 1; }
+sudo cp /usr/lib/syslinux/modules/bios/* image/isolinux/ || { echo "Failed to copy syslinux modules"; exit 1; }
 
-# Creating a basic isolinux.cfg file
+# Verify the contents of the isolinux directory
+ls -l image/isolinux/
+
+# Create the isolinux.cfg file
 cat <<EOF | sudo tee image/isolinux/isolinux.cfg
 DEFAULT linux
 LABEL linux
@@ -122,20 +96,19 @@ LABEL linux
   APPEND initrd=/casper/initrd.lz boot=casper quiet splash ---
 EOF
 
-# Creating the ISO image from the tree
-IMAGE_NAME=${IMAGE_NAME:-"CUSTOM ${release} $(date -u +%Y%m%d) - ${arch}"}
+# Generate the ISO image
+IMAGE_NAME="CUSTOM ${release} $(date -u +%Y%m%d) - ${arch}"
 ISOFILE=CUSTOM-${release}-$(date -u +%Y%m%d)-${arch}.iso
 
 sudo genisoimage -r -V "$IMAGE_NAME" -cache-inodes -J -l \
   -b isolinux/isolinux.bin -c isolinux/boot.cat \
   -no-emul-boot -boot-load-size 4 -boot-info-table \
-  -p "${DEBFULLNAME:-$USER} <${DEBMAIL:-on host $(hostname --fqdn)}>" \
-  -A "$IMAGE_NAME" \
-  -o ../$ISOFILE .
+  -o ../$ISOFILE image/ || { echo "Failed to generate ISO"; exit 1; }
 
-# Generate md5sum.txt checksum file
+# Generate the md5sum.txt file
 sudo find image/ -type f -print0 | sudo xargs -0 md5sum | grep -v "\./md5sum.txt" | sudo tee image/md5sum.txt
 
 # Output ISO file location and size
 echo "ISO file created: ../$ISOFILE"
 ls -lh ../$ISOFILE
+cd ..
