@@ -23,6 +23,7 @@ sudo apt-get install -y debootstrap squashfs-tools xorriso syslinux isolinux gen
 # Create necessary directories
 mkdir -p image/isolinux
 mkdir -p chroot
+mkdir -p image/casper
 
 # Bootstrap the base system
 sudo debootstrap --arch=${arch} ${release} chroot ${mirror}
@@ -64,6 +65,9 @@ sudo umount -lfr chroot/proc
 sudo umount -lfr chroot/sys
 sudo umount -lfr chroot/dev
 
+# Ensure the image/casper directory exists
+mkdir -p image/casper
+
 # Copy the kernel and initrd from the chroot
 sudo cp --verbose chroot/boot/vmlinuz-* image/casper/vmlinuz || { echo "Failed to copy vmlinuz"; exit 1; }
 sudo cp --verbose chroot/boot/initrd.img-* image/casper/initrd.lz || { echo "Failed to copy initrd.img"; exit 1; }
@@ -84,8 +88,6 @@ sudo mksquashfs chroot image/casper/filesystem.squashfs -noappend -no-progress
 # Copy ISOLINUX bootloader files
 sudo cp /usr/lib/ISOLINUX/isolinux.bin image/isolinux/ || { echo "Failed to copy isolinux.bin"; exit 1; }
 sudo cp /usr/lib/syslinux/modules/bios/* image/isolinux/ || { echo "Failed to copy syslinux modules"; exit 1; }
-
-mkdir image/casper
 
 # Verify the contents of the isolinux directory
 ls -l image/isolinux/
@@ -113,4 +115,3 @@ sudo find image/ -type f -print0 | sudo xargs -0 md5sum | grep -v "\./md5sum.txt
 # Output ISO file location and size
 echo "ISO file created: ../$ISOFILE"
 ls -lh ../$ISOFILE
-cd ..
