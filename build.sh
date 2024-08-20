@@ -85,6 +85,8 @@ sudo mksquashfs chroot image/casper/filesystem.squashfs -noappend -no-progress
 sudo cp /usr/lib/ISOLINUX/isolinux.bin image/isolinux/ || { echo "Failed to copy isolinux.bin"; exit 1; }
 sudo cp /usr/lib/syslinux/modules/bios/* image/isolinux/ || { echo "Failed to copy syslinux modules"; exit 1; }
 
+mkdir image/casper
+
 # Verify the contents of the isolinux directory
 ls -l image/isolinux/
 
