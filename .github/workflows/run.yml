@@ -16,9 +16,10 @@ jobs:
 
       - name: Run build script
         run: chmod +x build.sh && ./build.sh
-
+        
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v3
         with:
           name: custom-ubuntu-iso
-          path: CUSTOM-xenial-*.iso
+          path: '**/*.iso'
+          if-no-files-found: warn
