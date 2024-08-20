@@ -115,4 +115,3 @@ sudo find image/ -type f -print0 | sudo xargs -0 md5sum | grep -v "\./md5sum.txt
 # Output ISO file location and size
 echo "ISO file created: ../$ISOFILE"
 ls -lh ../$ISOFILE
-cd ..
